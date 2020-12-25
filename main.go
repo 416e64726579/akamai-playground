@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/test-go/appsec"
-	"github.com/test-go/netlist"
+	"github.com/akamai-playground/appsec"
+	"github.com/akamai-playground/netlist"
 
 	"github.com/akamai/AkamaiOPEN-edgegrid-golang/v2/pkg/edgegrid"
 	"github.com/akamai/AkamaiOPEN-edgegrid-golang/v2/pkg/papi"
@@ -29,15 +29,15 @@ func NewContractParams(contractID string, groupID int) ContractParams {
 }
 
 // AuthSession loads edgerc config and set up the client
-func AuthSession() session.Session {
+func AuthSession() (session.Session, error) {
 
 	edgerc := edgegrid.Must(edgegrid.New(edgegrid.WithFile(".edgerc"), edgegrid.WithSection("default")))
 
 	session, err := session.New(session.WithLog(log.Log), session.WithSigner(edgerc))
 	if err != nil {
-		log.Fatalf("session was not configured: %[1]v", err)
+		return nil, err
 	}
-	return session
+	return session, nil
 }
 
 // GetPAPIClient returns a client to work with PAPI APIs
@@ -55,16 +55,16 @@ func GetNetListClient(s session.Session) netlist.NETLIST {
 	return netlist.Client(s)
 }
 
-func getContractsGeneric(s session.Session) string {
+func getContractsGeneric(s session.Session) (string, error) {
 	req, err := http.NewRequest("GET", "/papi/v1/contracts", nil)
 	if err != nil {
-		log.Fatalf("request was not set up: %[1]v", err)
+		return "", err
 	}
 
 	var out *papi.GetContractsResponse
 	_, err = s.Exec(req, &out)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return "", err
 	}
 
 	contracts := out.Contracts.Items
@@ -73,29 +73,30 @@ func getContractsGeneric(s session.Session) string {
 	}
 	contractID := contracts[0].ContractID
 
-	return contractID
+	return contractID, nil
 }
 
-func listSecConfigsGeneric(s session.Session) {
+func listSecConfigsGeneric(s session.Session) error {
 	req, err := http.NewRequest("GET", "/appsec/v1/configs", nil)
 	if err != nil {
-		log.Fatalf("request was not set up: %[1]v", err)
+		return err
 	}
 
 	resp, err := s.Exec(req, nil)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("err: %v", err)
+		return err
 	}
 	bodyString := string(bodyBytes)
 	log.Info(bodyString)
+	return nil
 }
 
-func listGroupsGeneric(s session.Session) {
+func listGroupsGeneric(s session.Session) error {
 	req, err := http.NewRequest("GET", "/papi/v1/groups", nil)
 	if err != nil {
 		log.Fatalf("request was not set up: %[1]v", err)
@@ -104,20 +105,21 @@ func listGroupsGeneric(s session.Session) {
 	var out *papi.GetGroupsResponse
 	_, err = s.Exec(req, &out)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 	groups := out.Groups.Items
 
 	for _, g := range groups {
 		log.Infof("Group ID: %[1]s, Group Name: %[2]s", g.GroupID, g.GroupName)
 	}
+	return nil
 }
 
-func listSecConfigs(ctx context.Context, client appsec.APPSEC) {
+func listSecConfigs(ctx context.Context, client appsec.APPSEC) error {
 
 	out, err := client.GetConfigs(ctx)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	configs := out.ConfigItems.Configs
@@ -125,69 +127,75 @@ func listSecConfigs(ctx context.Context, client appsec.APPSEC) {
 	for _, c := range configs {
 		log.Infof("Config ID: %[1]s, Config Name: %[2]s", c.ID, c.Name)
 	}
+	return nil
 }
 
-func listSecConfigVersion(ctx context.Context, client appsec.APPSEC, configID int) {
+func listSecConfigVersion(ctx context.Context, client appsec.APPSEC, configID int) error {
 
 	out, err := client.GetConfigVersions(ctx, configID, "-1", "50", "true")
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	versions := out.VersionList
 	log.Infof("Version: %[1]d, Version Notes: %[2]s", versions[len(versions)-1].Version, versions[len(versions)-1].VersionNotes)
+	return nil
 }
 
-func listGroups(ctx context.Context, client papi.PAPI, contractID string) {
+func listGroups(ctx context.Context, client papi.PAPI, contractID string) error {
 
 	out, err := client.GetGroups(ctx)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	groups := out.Groups.Items
 	for _, g := range groups {
 		log.Infof("Group ID: %[1]s, Group Name: %[2]s", g.GroupID, g.GroupName)
 	}
+	return nil
 }
 
-func listProducts(ctx context.Context, client papi.PAPI, contractID string) {
+func listProducts(ctx context.Context, client papi.PAPI, contractID string) error {
 
 	params := papi.GetProductsRequest{ContractID: contractID}
 	out, err := client.GetProducts(ctx, params)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 	log.Infof("%v", out)
+	return nil
 }
 
-func listPolicies(ctx context.Context, client appsec.APPSEC, configID, versionNumber int) {
+func listPolicies(ctx context.Context, client appsec.APPSEC, configID, versionNumber int) error {
 
 	out, err := client.GetPolicies(ctx, configID, versionNumber)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	policies := out.Policies
 	for _, p := range policies {
 		log.Infof("Policy ID: %[1]d, Policy Name: %[2]s", p.PolicyID, p.PolicyName)
 	}
+	return nil
 }
 
-func listRules(ctx context.Context, client appsec.APPSEC, configID, versionNumber int, policyID string) {
+func listRules(ctx context.Context, client appsec.APPSEC, configID, versionNumber int, policyID string) error {
 
 	out, err := client.GetRules(ctx, configID, 1, policyID)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	actions := out.RuleActions
 	for _, a := range actions {
 		log.Infof("Action ID: %[1]d, Action Type: %[2]s", a.ID, a.Action)
 	}
+	return nil
 }
 
-func listNetworkLists(ctx context.Context, client netlist.NETLIST) {
+func listNetworkLists(ctx context.Context, client netlist.NETLIST) error {
 
 	params := netlist.ListNetworkListsRequest{
 		OptionalParams: &netlist.OptionalParams{
@@ -199,16 +207,17 @@ func listNetworkLists(ctx context.Context, client netlist.NETLIST) {
 
 	out, err := client.ListNetworkLists(ctx, params)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	lists := out.NetworkLists
 	for _, l := range lists {
 		log.Infof("Unique ID: %[1]s, Is activated on Staging: %[2]s", l.UniqueID, l.Links.ActivateInStaging)
 	}
+	return nil
 }
 
-func getNetworkList(ctx context.Context, client netlist.NETLIST, networkListID string) {
+func getNetworkList(ctx context.Context, client netlist.NETLIST, networkListID string) error {
 
 	params := netlist.GetNetworkListRequest{
 		OptionalParams: &netlist.OptionalParams{
@@ -220,7 +229,7 @@ func getNetworkList(ctx context.Context, client netlist.NETLIST, networkListID s
 
 	out, err := client.GetNetworkList(ctx, params)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	listType := out.Type
@@ -234,9 +243,10 @@ func getNetworkList(ctx context.Context, client netlist.NETLIST, networkListID s
 	for _, ip := range listIP {
 		log.Infof("%[1]s: %[2]s", logType, ip)
 	}
+	return nil
 }
 
-func createNetworkList(ctx context.Context, client netlist.NETLIST, NLType netlist.NetworkType, NList []string, contractDetails interface{}) string {
+func createNetworkList(ctx context.Context, client netlist.NETLIST, NLType netlist.NetworkType, NList []string, contractDetails interface{}) (string, error) {
 
 	params := netlist.CreateNetworkListRequest{
 		BodyNetworkListRequest: &netlist.BodyNetworkListRequest{
@@ -259,14 +269,14 @@ func createNetworkList(ctx context.Context, client netlist.NETLIST, NLType netli
 
 	out, err := client.CreateNetworkList(ctx, params)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return "", err
 	}
 
 	log.Infof("Unique ID os the created list: %[1]s, SyncPoint: %[2]d", out.UniqueID, out.SyncPoint)
-	return out.UniqueID
+	return out.UniqueID, nil
 }
 
-func updateNetworkList(ctx context.Context, client netlist.NETLIST, listID string) {
+func updateNetworkList(ctx context.Context, client netlist.NETLIST, listID string) error {
 
 	params := netlist.UpdateNetworkListRequest{
 		BodyNetworkListRequest: &netlist.BodyNetworkListRequest{
@@ -277,42 +287,108 @@ func updateNetworkList(ctx context.Context, client netlist.NETLIST, listID strin
 				},
 				NetworkListID: listID,
 			},
-			Name:        "Include one country",
+			Name:        "Updated List of Countries",
 			Type:        netlist.GEO.String(),
-			Description: "Updated notes",
+			Description: "Updated Notes",
 			List:        []string{"CH"},
 		},
 	}
 
 	out, err := client.UpdateNetworkList(ctx, params)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	countries := out.List
 	for _, c := range countries {
 		log.Infof("Country: %s", c)
 	}
+	return nil
 }
 
-func deleteNetworkList(ctx context.Context, client netlist.NETLIST, listID string) {
+func deleteNetworkList(ctx context.Context, client netlist.NETLIST, listID string) error {
 
-	params := netlist.GetNetworkListRequest{
-		NetworkListID: listID,
+	params := netlist.DeleteNetworkListRequest{
+		GetNetworkListRequest: &netlist.GetNetworkListRequest{
+			NetworkListID: listID,
+		},
 	}
 
 	out, err := client.DeleteNetworkList(ctx, params)
 	if err != nil {
-		log.Fatalf("session was not signed or executed, %[1]v", err)
+		return err
 	}
 
 	log.Infof("Delete Status: %d", out.Status)
+	return nil
+}
+
+func appendNetworkList(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.AppendListRequest{
+		NetworkListID: listID,
+		List:          []string{"RU", "US"},
+	}
+
+	out, err := client.AppendList(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	countries := out.List
+	for _, c := range countries {
+		log.Infof("Country: %s", c)
+	}
+	return nil
+}
+
+func addElement(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.AddElementRequest{
+		NetworkListID: listID,
+		Element:       "GB",
+	}
+
+	out, err := client.AddElement(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	countries := out.List
+	for _, c := range countries {
+		log.Infof("Country: %s", c)
+	}
+	return nil
+}
+
+func removeElement(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.RemoveElementRequest{
+		AddElementRequest: &netlist.AddElementRequest{
+			NetworkListID: listID,
+			Element:       "US",
+		},
+	}
+
+	out, err := client.RemoveElement(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	countries := out.List
+	for _, c := range countries {
+		log.Infof("Country: %s", c)
+	}
+	return nil
 }
 
 func main() {
 	log.SetHandler(text.New(os.Stdout))
 	ctx := context.Background()
-	session := AuthSession()
+	session, err := AuthSession()
+	if err != nil {
+		log.Fatalf("session was not signed or executed with an error: %v", err)
+	}
 	// papiClient := GetPapiClient(session)
 	// appsecClient := GetAppSecClient(session)
 	netlistClient := GetNetListClient(session)
@@ -322,13 +398,29 @@ func main() {
 
 	// listNetworkLists(ctx, netlistClient)
 	// listIP := createNetworkList(ctx, netlistClient, netlist.IP, IPList)
-	contractID := getContractsGeneric(session)
+	contractID, err := getContractsGeneric(session)
+	if err != nil {
+		log.Fatalf("session was not signed or executed with an error: %v", err)
+	}
 	acg := 179988 // this is my ACG which I retrieved via listGroups
 	params := NewContractParams(strings.TrimPrefix(contractID, "ctr_"), acg)
-	listGEO := createNetworkList(ctx, netlistClient, netlist.GEO, countries, params)
+	listGEO, err := createNetworkList(ctx, netlistClient, netlist.GEO, countries, params)
+	if err != nil {
+		log.Fatalf("session was not signed or executed with an error: %v", err)
+	}
+	defer deleteNetworkList(ctx, netlistClient, listGEO)
 	getNetworkList(ctx, netlistClient, listGEO)
 	updateNetworkList(ctx, netlistClient, listGEO)
-	deleteNetworkList(ctx, netlistClient, listGEO)
+	if err := appendNetworkList(ctx, netlistClient, listGEO); err != nil {
+		log.Errorf("%v", err)
+	}
+
+	if err := addElement(ctx, netlistClient, listGEO); err != nil {
+		log.Errorf("%v", err)
+	}
+	// if err := removeElement(ctx, netlistClient, listGEO); err != nil {
+	// 	log.Errorf("%v", err)
+	// }
 	// listProducts(ctx, papiClient, contractID)
 	// listSecConfigsGeneric(session)
 	// listGroups(ctx, papiClient, contractID)

@@ -1,4 +1,4 @@
-module github.com/test-go
+module github.com/akamai-playground
 
 go 1.13
 

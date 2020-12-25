@@ -36,7 +36,10 @@ type (
 		GetNetworkList(ctx context.Context, params GetNetworkListRequest) (*NetworkListResponse, error)
 		UpdateNetworkList(ctx context.Context, params UpdateNetworkListRequest) (*NetworkListResponse, error)
 		CreateNetworkList(ctx context.Context, params CreateNetworkListRequest) (*NetworkListResponse, error)
-		DeleteNetworkList(ctx context.Context, params GetNetworkListRequest) (*DeleteNetworkListResponse, error)
+		DeleteNetworkList(ctx context.Context, params DeleteNetworkListRequest) (*NetworkListResponse, error)
+		AppendList(ctx context.Context, params AppendListRequest) (*NetworkListResponse, error)
+		AddElement(ctx context.Context, params AddElementRequest) (*NetworkListResponse, error)
+		RemoveElement(ctx context.Context, params RemoveElementRequest) (*NetworkListResponse, error)
 	}
 
 	// NetworkType represents type of a list (GEO or IP)
@@ -56,10 +59,15 @@ type (
 		Search   string      `json:"search,omitempty"`
 	}
 
-	// GetNetworkListRequest is a wrapper for getting and deleting a list
+	// GetNetworkListRequest is a wrapper for getting a list
 	GetNetworkListRequest struct {
 		*OptionalParams
-		NetworkListID string `json:"networkListId,omitempty"`
+		NetworkListID string `json:"-"`
+	}
+
+	// DeleteNetworkListRequest is a wrapper for list deletion
+	DeleteNetworkListRequest struct {
+		*GetNetworkListRequest
 	}
 
 	// ListNetworkListsResponse is a response of the fetching lists method
@@ -75,7 +83,8 @@ type (
 		} `json:"links"`
 	}
 
-	// BodyNetworkListRequest is a JSON body for creating and updating of a NL
+	// BodyNetworkListRequest is a JSON body for creating
+	// and updating of a NL
 	BodyNetworkListRequest struct {
 		*GetNetworkListRequest
 		Name        string   `json:"name"`
@@ -99,6 +108,7 @@ type (
 
 	// NetworkListResponse represents a common response to the methods
 	NetworkListResponse struct {
+		Status          int      `json:"status"`
 		Name            string   `json:"name"`
 		UniqueID        string   `json:"uniqueId"`
 		SyncPoint       int      `json:"syncPoint"`
@@ -137,11 +147,22 @@ type (
 		} `json:"links"`
 	}
 
-	// DeleteNetworkListResponse is a response on delete action
-	DeleteNetworkListResponse struct {
-		Status    int    `json:"status"`
-		UniqueID  string `json:"uniqueId"`
-		SyncPoint int    `json:"syncPoint"`
+	// AppendListRequest contains a list of elements
+	// to append to the list
+	AppendListRequest struct {
+		List          []string `json:"list"`
+		NetworkListID string   `json:"-"`
+	}
+
+	// AddElementRequest contains an element to add to the list
+	AddElementRequest struct {
+		NetworkListID string `json:"-"`
+		Element       string `json:"-"`
+	}
+
+	// RemoveElementRequest contains an element to remove from the list
+	RemoveElementRequest struct {
+		*AddElementRequest
 	}
 )
 
@@ -161,19 +182,22 @@ func (p *netlist) ListNetworkLists(ctx context.Context, params ListNetworkListsR
 		return nil, fmt.Errorf("failed to create listnetworklists request: %w", err)
 	}
 
-	req.URL.Query().Add("extended", strconv.FormatBool(params.Extended))
-	req.URL.Query().Add("includeElements", strconv.FormatBool(params.IncludeElements))
+	q := req.URL.Query()
+
+	q.Add("extended", strconv.FormatBool(params.Extended))
+	q.Add("includeElements", strconv.FormatBool(params.IncludeElements))
 
 	if params.Search != "" {
-		req.URL.Query().Add("search", params.Search)
+		q.Add("search", params.Search)
 	}
 
 	switch params.ListType {
 	case IP:
-		req.URL.Query().Add("listType", IP.String())
+		q.Add("listType", IP.String())
 	case GEO:
-		req.URL.Query().Add("listType", GEO.String())
+		q.Add("listType", GEO.String())
 	}
+	req.URL.RawQuery = q.Encode()
 
 	resp, err := p.Exec(req, &rval)
 	if err != nil {
@@ -185,7 +209,6 @@ func (p *netlist) ListNetworkLists(ctx context.Context, params ListNetworkListsR
 	}
 
 	return &rval, nil
-
 }
 
 func (p *netlist) GetNetworkList(ctx context.Context, params GetNetworkListRequest) (*NetworkListResponse, error) {
@@ -206,8 +229,10 @@ func (p *netlist) GetNetworkList(ctx context.Context, params GetNetworkListReque
 		return nil, fmt.Errorf("failed to create getnetworklist request: %w", err)
 	}
 
-	req.URL.Query().Add("extended", strconv.FormatBool(params.Extended))
-	req.URL.Query().Add("includeElements", strconv.FormatBool(params.IncludeElements))
+	q := req.URL.Query()
+	q.Add("extended", strconv.FormatBool(params.Extended))
+	q.Add("includeElements", strconv.FormatBool(params.IncludeElements))
+	req.URL.RawQuery = q.Encode()
 
 	resp, err := p.Exec(req, &rval)
 	if err != nil {
@@ -219,7 +244,6 @@ func (p *netlist) GetNetworkList(ctx context.Context, params GetNetworkListReque
 	}
 
 	return &rval, nil
-
 }
 
 func (p *netlist) UpdateNetworkList(ctx context.Context, params UpdateNetworkListRequest) (*NetworkListResponse, error) {
@@ -240,8 +264,10 @@ func (p *netlist) UpdateNetworkList(ctx context.Context, params UpdateNetworkLis
 		return nil, fmt.Errorf("failed to create updatenetworklist request: %w", err)
 	}
 
-	req.URL.Query().Add("extended", strconv.FormatBool(params.Extended))
-	req.URL.Query().Add("includeElements", strconv.FormatBool(params.IncludeElements))
+	q := req.URL.Query()
+	q.Add("extended", strconv.FormatBool(params.Extended))
+	q.Add("includeElements", strconv.FormatBool(params.IncludeElements))
+	req.URL.RawQuery = q.Encode()
 
 	resp, err := p.Exec(req, &rval, params)
 	if err != nil {
@@ -253,7 +279,6 @@ func (p *netlist) UpdateNetworkList(ctx context.Context, params UpdateNetworkLis
 	}
 
 	return &rval, nil
-
 }
 
 func (p *netlist) CreateNetworkList(ctx context.Context, params CreateNetworkListRequest) (*NetworkListResponse, error) {
@@ -280,10 +305,9 @@ func (p *netlist) CreateNetworkList(ctx context.Context, params CreateNetworkLis
 	}
 
 	return &rval, nil
-
 }
 
-func (p *netlist) DeleteNetworkList(ctx context.Context, params GetNetworkListRequest) (*DeleteNetworkListResponse, error) {
+func (p *netlist) DeleteNetworkList(ctx context.Context, params DeleteNetworkListRequest) (*NetworkListResponse, error) {
 	if err := params.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrStructValidation, err.Error())
 	}
@@ -291,7 +315,7 @@ func (p *netlist) DeleteNetworkList(ctx context.Context, params GetNetworkListRe
 	logger := p.Log(ctx)
 	logger.Debug("DeleteNetworkList")
 
-	var rval DeleteNetworkListResponse
+	var rval NetworkListResponse
 
 	uri := fmt.Sprintf(
 		"/network-list/v2/network-lists/%s", params.NetworkListID)
@@ -311,7 +335,104 @@ func (p *netlist) DeleteNetworkList(ctx context.Context, params GetNetworkListRe
 	}
 
 	return &rval, nil
+}
 
+func (p *netlist) AppendList(ctx context.Context, params AppendListRequest) (*NetworkListResponse, error) {
+	if err := params.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrStructValidation, err.Error())
+	}
+
+	logger := p.Log(ctx)
+	logger.Debug("AppendNetworkList")
+
+	var rval NetworkListResponse
+
+	uri := fmt.Sprintf(
+		"/network-list/v2/network-lists/%s/append", params.NetworkListID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create appendnetworklist request: %w", err)
+	}
+
+	resp, err := p.Exec(req, &rval, params)
+	if err != nil {
+		return nil, fmt.Errorf("appendnetworklist request failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusAccepted {
+		return nil, p.Error(resp)
+	}
+
+	return &rval, nil
+}
+
+func (p *netlist) AddElement(ctx context.Context, params AddElementRequest) (*NetworkListResponse, error) {
+	if err := params.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrStructValidation, err.Error())
+	}
+
+	logger := p.Log(ctx)
+	logger.Debug("AddElement")
+
+	var rval NetworkListResponse
+
+	uri := fmt.Sprintf(
+		"/network-list/v2/network-lists/%s/elements", params.NetworkListID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uri, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create addelement request: %w", err)
+	}
+
+	q := req.URL.Query()
+	q.Add("element", params.Element)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := p.Exec(req, &rval, nil)
+	if err != nil {
+		return nil, fmt.Errorf("addelement request failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, p.Error(resp)
+	}
+
+	return &rval, nil
+}
+
+func (p *netlist) RemoveElement(ctx context.Context, params RemoveElementRequest) (*NetworkListResponse, error) {
+	if err := params.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrStructValidation, err.Error())
+	}
+
+	logger := p.Log(ctx)
+	logger.Debug("RemoveElement")
+
+	var rval NetworkListResponse
+
+	uri := fmt.Sprintf(
+		"/network-list/v2/network-lists/%s/elements", params.NetworkListID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, uri, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create removeelement request: %w", err)
+	}
+
+	q := req.URL.Query()
+	q.Add("element", params.Element)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := p.Exec(req, &rval, nil)
+	if err != nil {
+		return nil, fmt.Errorf("removeelement request failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, p.Error(resp)
+	}
+
+	return &rval, nil
 }
 
 // Validate validates GetNetworkListRequest
@@ -325,5 +446,28 @@ func (v GetNetworkListRequest) Validate() error {
 func (v UpdateNetworkListRequest) Validate() error {
 	return validation.Errors{
 		"networkListId": validation.Validate(v.GetNetworkListRequest.NetworkListID, validation.Required),
+	}.Filter()
+}
+
+// Validate validates AppendListRequest
+func (v AppendListRequest) Validate() error {
+	return validation.Errors{
+		"networkListId": validation.Validate(v.NetworkListID, validation.Required),
+	}.Filter()
+}
+
+// Validate validates AddElementRequest
+func (v AddElementRequest) Validate() error {
+	return validation.Errors{
+		"networkListId": validation.Validate(v.NetworkListID, validation.Required),
+		"element":       validation.Validate(v.Element, validation.Required),
+	}.Filter()
+}
+
+// Validate validates RemoveElementRequest
+func (v RemoveElementRequest) Validate() error {
+	return validation.Errors{
+		"networkListId": validation.Validate(v.NetworkListID, validation.Required),
+		"element":       validation.Validate(v.Element, validation.Required),
 	}.Filter()
 }

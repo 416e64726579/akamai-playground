@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/akamai-playground/appsec"
 	"github.com/akamai-playground/netlist"
@@ -212,7 +211,7 @@ func listNetworkLists(ctx context.Context, client netlist.NETLIST) error {
 
 	lists := out.NetworkLists
 	for _, l := range lists {
-		log.Infof("Unique ID: %[1]s, Is activated on Staging: %[2]s", l.UniqueID, l.Links.ActivateInStaging)
+		log.Infof("Unique ID: %[1]s, Link to activate on Staging: %[2]s", l.UniqueID, l.Links.ActivateInStaging)
 	}
 	return nil
 }
@@ -246,7 +245,7 @@ func getNetworkList(ctx context.Context, client netlist.NETLIST, networkListID s
 	return nil
 }
 
-func createNetworkList(ctx context.Context, client netlist.NETLIST, NLType netlist.NetworkType, NList []string, contractDetails interface{}) (string, error) {
+func createNetworkList(ctx context.Context, client netlist.NETLIST, NLType netlist.NetworkType, NList []string, contractDetails ...interface{}) (string, error) {
 
 	params := netlist.CreateNetworkListRequest{
 		BodyNetworkListRequest: &netlist.BodyNetworkListRequest{
@@ -257,8 +256,8 @@ func createNetworkList(ctx context.Context, client netlist.NETLIST, NLType netli
 		},
 	}
 
-	if contractDetails != nil {
-		switch c := contractDetails.(type) {
+	if contractDetails != nil && len(contractDetails) <= 1 {
+		switch c := contractDetails[0].(type) {
 		case ContractParams:
 			params.ContractID = c.ContractID
 			params.GroupID = c.GroupID
@@ -302,6 +301,25 @@ func updateNetworkList(ctx context.Context, client netlist.NETLIST, listID strin
 	countries := out.List
 	for _, c := range countries {
 		log.Infof("Country: %s", c)
+	}
+	return nil
+}
+
+func appendIPNetworkList(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.AppendListRequest{
+		NetworkListID: listID,
+		List:          []string{"1.1.1.1"},
+	}
+
+	out, err := client.AppendList(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	IPList := out.List
+	for _, c := range IPList {
+		log.Infof("IP address: %s", c)
 	}
 	return nil
 }
@@ -382,6 +400,73 @@ func removeElement(ctx context.Context, client netlist.NETLIST, listID string) e
 	return nil
 }
 
+func activateNetworkList(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.ActivateNetworkListRequest{
+		NetworkListID:          listID,
+		Environment:            netlist.STAGING,
+		Comments:               "Update via code",
+		NotificationRecipients: []string{"andrey.petriv1@gmail.com"},
+	}
+
+	out, err := client.ActivateNetworkList(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("%d", out.ActivationID)
+	return nil
+}
+
+func getActivationNetworkList(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.ActivateNetworkListRequest{
+		NetworkListID: listID,
+		Environment:   netlist.STAGING,
+	}
+
+	out, err := client.GetActivationNetworkList(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("%s", out.ActivationStatus)
+	return nil
+}
+
+func getActivationSnapshot(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.GetActivationSnapshotRequest{
+		NetworkListID: listID,
+		SyncPoint:     0,
+		Extended:      true,
+	}
+
+	out, err := client.GetActivationSnapshot(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("%s", out.Name)
+	return nil
+}
+
+func updateNLDetails(ctx context.Context, client netlist.NETLIST, listID string) error {
+
+	params := netlist.UpdateNetworkListDetailsRequest{
+		NetworkListID: listID,
+		Name:          "Update Network List Details Name",
+		Description:   "Update Network List Details Description",
+	}
+
+	err := client.UpdateNetworkListDetails(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	log.SetHandler(text.New(os.Stdout))
 	ctx := context.Background()
@@ -393,34 +478,6 @@ func main() {
 	// appsecClient := GetAppSecClient(session)
 	netlistClient := GetNetListClient(session)
 
-	// IPList := randomIP()
-	countries := ISOCountries()
-
-	// listNetworkLists(ctx, netlistClient)
-	// listIP := createNetworkList(ctx, netlistClient, netlist.IP, IPList)
-	contractID, err := getContractsGeneric(session)
-	if err != nil {
-		log.Fatalf("session was not signed or executed with an error: %v", err)
-	}
-	acg := 179988 // this is my ACG which I retrieved via listGroups
-	params := NewContractParams(strings.TrimPrefix(contractID, "ctr_"), acg)
-	listGEO, err := createNetworkList(ctx, netlistClient, netlist.GEO, countries, params)
-	if err != nil {
-		log.Fatalf("session was not signed or executed with an error: %v", err)
-	}
-	defer deleteNetworkList(ctx, netlistClient, listGEO)
-	getNetworkList(ctx, netlistClient, listGEO)
-	updateNetworkList(ctx, netlistClient, listGEO)
-	if err := appendNetworkList(ctx, netlistClient, listGEO); err != nil {
-		log.Errorf("%v", err)
-	}
-
-	if err := addElement(ctx, netlistClient, listGEO); err != nil {
-		log.Errorf("%v", err)
-	}
-	// if err := removeElement(ctx, netlistClient, listGEO); err != nil {
-	// 	log.Errorf("%v", err)
-	// }
 	// listProducts(ctx, papiClient, contractID)
 	// listSecConfigsGeneric(session)
 	// listGroups(ctx, papiClient, contractID)
@@ -428,4 +485,56 @@ func main() {
 	// listSecConfigVersion(ctx, appsecClient, 69058)
 	// listPolicies(ctx, appsecClient, 69058, 50)
 	// listRules(ctx, appsecClient, 69058, 50, "1234_112176")
+
+	// IPList := randomIP()
+	// countries := ISOCountries()
+
+	// listNetworkLists(ctx, netlistClient)
+	// listIP := createNetworkList(ctx, netlistClient, netlist.IP, IPList)
+	// contractID, err = getContractsGeneric(session)
+	// if err != nil {
+	// 	log.Fatalf("session was not signed or executed with an error: %v", err)
+	// }
+
+	// listNetworkLists(ctx, netlistClient)
+
+	// acg := 179988 // this is my ACG which I retrieved via listGroups
+	// params := NewContractParams(strings.TrimPrefix(contractID, "ctr_"), acg)
+	// listGEO, err := createNetworkList(ctx, netlistClient, netlist.GEO, countries, params)
+	// if err != nil {
+	// 	log.Fatalf("session was not signed or executed with an error: %v", err)
+	// }
+	// defer deleteNetworkList(ctx, netlistClient, listGEO)
+	// getNetworkList(ctx, netlistClient, listGEO)
+	// updateNetworkList(ctx, netlistClient, listGEO)
+	// if err := appendNetworkList(ctx, netlistClient, listGEO); err != nil {
+	// 	log.Errorf("%v", err)
+	// }
+
+	// if err := addElement(ctx, netlistClient, listGEO); err != nil {
+	// 	log.Errorf("%v", err)
+	// }
+	// if err := removeElement(ctx, netlistClient, listGEO); err != nil {
+	// 	log.Errorf("%v", err)
+	// }
+
+	listID := ""
+	if err := appendIPNetworkList(ctx, netlistClient, listID); err != nil {
+		log.Errorf("%v", err)
+	}
+	if err := activateNetworkList(ctx, netlistClient, listID); err != nil {
+		log.Errorf("%v", err)
+	}
+	if err := getActivationNetworkList(ctx, netlistClient, listID); err != nil {
+		log.Errorf("%v", err)
+	}
+
+	if err := getActivationSnapshot(ctx, netlistClient, listID); err != nil {
+		log.Errorf("%v", err)
+	}
+
+	if err := updateNLDetails(ctx, netlistClient, listID); err != nil {
+		log.Errorf("%v", err)
+	}
+
 }

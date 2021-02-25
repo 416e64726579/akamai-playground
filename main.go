@@ -406,7 +406,7 @@ func activateNetworkList(ctx context.Context, client netlist.NETLIST, listID str
 		NetworkListID:          listID,
 		Environment:            netlist.STAGING,
 		Comments:               "Update via code",
-		NotificationRecipients: []string{"andrey.petriv1@gmail.com"},
+		NotificationRecipients: []string{"roy.kaynagan@gmail.com"},
 	}
 
 	out, err := client.ActivateNetworkList(ctx, params)
